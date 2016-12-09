@@ -13,11 +13,7 @@ class HiddenPredatorRepulsor : Attractor {
         return -120f * RANGE /(distance*distance);
     }
 
-    override fun getMaxRange(): Float {
-        return RANGE;
-    }
+    override val maxRange: Float = RANGE
 
-    override fun getAttractorType(): AttractorType {
-        return AttractorType.HIDDEN_PREDATOR;
-    }
+    override val attractorType: AttractorType = AttractorType.HIDDEN_PREDATOR
 }

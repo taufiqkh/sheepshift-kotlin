@@ -13,11 +13,7 @@ class CrowdingRepulsor : Attractor {
         return -30f * CROWDING_RANGE/(distance*distance);
     }
 
-    override fun getMaxRange(): Float {
-        return CROWDING_RANGE;
-    }
+    override val maxRange: Float = CROWDING_RANGE
 
-    override fun getAttractorType(): AttractorType {
-        return AttractorType.CROWDING;
-    }
+    override val attractorType: AttractorType = AttractorType.CROWDING
 }

@@ -2,10 +2,19 @@ package com.quiptiq.ludumdare.ld35.game
 
 import com.badlogic.ashley.core.Engine
 import com.badlogic.ashley.core.Entity
+import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.math.MathUtils
+import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.math.Vector3
+import com.badlogic.gdx.math.collision.BoundingBox
+import com.badlogic.gdx.utils.Array as GdxArray
+import com.quiptiq.ludumdare.LogicHandler
+import com.quiptiq.ludumdare.ld35.GraphicsHandler
+import com.quiptiq.ludumdare.ld35.entity.FixedObjectRepulsor
 import com.quiptiq.ludumdare.ld35.entity.Movement
 import com.quiptiq.ludumdare.ld35.entity.Position
+import com.quiptiq.ludumdare.ld35.gfx.IntersectableModel
+import com.quiptiq.ludumdare.ld35.gfx.ModelFactory
 
 class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
     companion object {
@@ -23,16 +32,17 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
     val complexity: Float
     val hiddenSheepChance: Float
 
-    private val collisions: Array<IntersectableModel> = Array<IntersectableModel>();
+    private val collisions: GdxArray<IntersectableModel> =
+            GdxArray<IntersectableModel>();
 
-    private IntersectableModel sheepPenModel;
+    private lateinit var sheepPenModel: IntersectableModel
 
-    private Array<IntersectableModel> wolfMB;
+    private lateinit var wolfMB: GdxArray<IntersectableModel>
 
-    private var mapModel: IntersectableModel
+    private lateinit var mapModel: IntersectableModel
 
-    private val engine: Engine
-    private var player: Entity
+    private lateinit var engine: Engine
+    private lateinit var player: Entity
 
     init {
         this.sheepCount = sheepCount;
@@ -65,7 +75,8 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
         player.add(Position(Vector3(), Vector3()));
         player.add(Movement(Vector3(), Vector3()));
         player.add(LogicHandler.Mouseable());
-        player.add(ModelComponent(GraphicsHandler.getGraphicsHandler().getWorldRenderer().getPlayerModel()));
+        player.add(LogicHandler.ModelComponent(GraphicsHandler.graphicsHandler.getWorldRenderer
+        ().getPlayerModel()));
 
         engine.addEntity(player);
 
@@ -75,16 +86,13 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
         createSheepPen(mapSize, penSize, penSize);
         createWolfTransform(mapSize);
 
-        for (int i = 0; i < mapSize / (20f / complexity); i++) {
+        for (i in 0 until (mapSize / (20f / complexity)).toInt()) {
             createTree(mapSize, 0.5f);
         }
 
-        boolean fine;
-        Vector2 testVec = new Vector2();
-        for (int i = 0; i < sheepCount; i++) {
-            float posX;
-            float posZ;
-
+        var fine: Boolean
+        val testVec: Vector2 = Vector2();
+        for (i in 0 until sheepCount) {
             do {
                 fine = true;
 
@@ -93,27 +101,25 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
 
                 if (sheepPenModel.lineIntersectsCollision(testVec, testVec))
                     fine = false;
-                for (IntersectableModel m : collisions) {
+                for (m in collisions) {
                     if (m.lineIntersectsCollision(testVec, testVec))
                         fine = false;
                 }
             } while (!fine);
 
-            posX = testVec.x;
-            posZ = testVec.y;
+            val posX = testVec.x;
+            val posZ = testVec.y;
 
-            Entity sheepEntity = GraphicsHandler.getLogicHandler().createNewPrey(new Vector3(posX, 0f, posZ), new Vector3());
+            val sheepEntity: Entity = GraphicsHandler.logicHandler.createNewPrey(
+                    Vector3(posX, 0f, posZ), Vector3());
 
             if (MathUtils.randomBoolean(hiddenSheepChance))
-                sheepEntity.add(new LogicHandler.PredatorHidden());
+                sheepEntity.add(LogicHandler.PredatorHidden());
 
             engine.addEntity(sheepEntity);
         }
 
-        for (int i = 0; i < wolfCount; i++) {
-            float posX;
-            float posZ;
-
+        for (i in 0 until wolfCount) {
             do {
                 fine = true;
 
@@ -122,27 +128,30 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
 
                 if (sheepPenModel.lineIntersectsCollision(testVec, testVec) && complexity < 2f)
                     fine = false;
-                for (IntersectableModel m : collisions) {
+                for (m in collisions) {
                     if (m.lineIntersectsCollision(testVec, testVec))
                         fine = false;
                 }
             } while (!fine);
 
-            posX = testVec.x;
-            posZ = testVec.y;
+            val posX = testVec.x;
+            val posZ = testVec.y;
 
-            engine.addEntity(GraphicsHandler.getLogicHandler().createNewPredator(new Vector3(posX, 0f, posZ), new Vector3()));
+            engine.addEntity(GraphicsHandler.logicHandler.createNewPredator(
+                    Vector3(posX, 0f, posZ), Vector3()));
         }
     }
 
-    private IntersectableModel newCollision(float x, float y, float z, float scale, float rotation, String model) {
-        IntersectableModel c = ModelFactory.createCustomModel(model);
+    private fun newCollision(x: Float, y: Float, z: Float, scale: Float, rotation: Float, model:
+    String):
+    IntersectableModel {
+        val c: IntersectableModel = ModelFactory.createCustomModel(model);
         c.transform.setToTranslation(x, y, z).rotate(Vector3.Y, rotation).scale(scale, scale, scale);
 
         return c;
     }
 
-    public void addCollisionModel(IntersectableModel c) {
+    fun addCollisionModel(c: IntersectableModel) {
         if (collisions.contains(c, false))
             return;
 
@@ -151,56 +160,57 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
         collisions.add(c);
     }
 
-    public Array<IntersectableModel> getCollisionModels() {
+    fun getCollisionModels(): GdxArray<IntersectableModel> {
         return collisions;
     }
 
-    public IntersectableModel getSheepPenModel() {
+    fun getSheepPenModel(): IntersectableModel {
         return sheepPenModel;
     }
 
-    public Array<IntersectableModel> getWolfTransformModels() {
+    fun getWolfTransformModels(): GdxArray<IntersectableModel> {
         return wolfMB;
     }
 
-    public Entity getPlayer() {
+    fun getPlayer(): Entity {
         return player;
     }
 
-    public Engine getEngine() {
+    fun getEngine(): Engine {
         return engine;
     }
 
-    public void dispose() {
+    fun dispose() {
         collisions.clear();
         engine.removeAllEntities();
     }
 
-    private void createTree(float mapSize, float weight) {
-        boolean okay = true;
-
-        float penLocX = 0;
-        float penLocZ = 0;
-
-        String treeType = "";
-        float rotateAmnt = 0f;
-        switch (MathUtils.random(2)) {
-            case 0:
-            treeType = GraphicsHandler.MDL_TREE1;
-            rotateAmnt = 360f * MathUtils.random() - 180f;
-            break;
-            case 1:
-            treeType = GraphicsHandler.MDL_TREE2;
-            rotateAmnt = 360f * MathUtils.random() - 180f;
-            break;
-            case 2:
-            treeType = GraphicsHandler.MDL_ROCK1;
-            rotateAmnt = MathUtils.random(3) * 90f;
-            break;
+    private fun createTree(mapSize: Float, weight: Float) {
+        val treeType: String
+        val rotateAmnt: Float
+        when (MathUtils.random(2)) {
+            0 -> {
+                treeType = GraphicsHandler.MDL_TREE1;
+                rotateAmnt = 360f * MathUtils.random() - 180f;
+            }
+            1 -> {
+                treeType = GraphicsHandler.MDL_TREE2;
+                rotateAmnt = 360f * MathUtils.random() - 180f;
+            }
+            2 -> {
+                treeType = GraphicsHandler.MDL_ROCK1;
+                rotateAmnt = MathUtils.random(3) * 90f;
+            }
+            else -> {
+                return
+            }
         }
 
-        IntersectableModel treeInstance = ModelFactory.createCustomModel(treeType);
-        IntersectableModel collisionModel = null;
+        val treeInstance = ModelFactory.createCustomModel(treeType);
+        var collisionModel: IntersectableModel? = null
+        var okay: Boolean
+        var penLocX: Float
+        var penLocZ: Float
         do {
             okay = true;
 
@@ -209,7 +219,7 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
 
             treeInstance.transform.setToTranslation(penLocX, 0f, penLocZ);
 
-            for (IntersectableModel b : collisions)
+            for (b in collisions)
             if (b.intersects(treeInstance)) {
                 okay = false;
                 break;
@@ -218,33 +228,37 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
             if (okay) {
                 if (treeInstance.intersects(sheepPenModel))
                     okay = false;
-                for (IntersectableModel b : wolfMB)
+                for (b in wolfMB)
                 if (treeInstance.intersects(b))
                     okay = false;
 
-                if (treeInstance.intersects(GraphicsHandler.getGraphicsHandler().getWorldRenderer().getPlayerModel()))
+                if (treeInstance.intersects(GraphicsHandler.graphicsHandler.getWorldRenderer()
+                        .getPlayerModel()))
                     okay = false;
 
                 collisionModel = newCollision(penLocX, 0f, penLocZ, 0.5f + MathUtils.random(1f), rotateAmnt, treeType);
-                if (collisionModel.intersects(sheepPenModel)) {
+                if (collisionModel != null && collisionModel.intersects(sheepPenModel)) {
                     collisionModel = null;
                     okay = false;
                 }
             }
-        } while (!okay);
-        addFixedEntity(collisionModel, penLocX, penLocZ);
-        addCollisionModel(collisionModel);
+        } while (!okay)
+        if (collisionModel != null) {
+            addFixedEntity(collisionModel, penLocX, penLocZ);
+            addCollisionModel(collisionModel);
+        }
     }
 
-    private void createWolfTransform(float mapSize) {
-        wolfMB = new Array<IntersectableModel>();
+    private fun createWolfTransform(mapSize: Float) {
+        wolfMB = GdxArray<IntersectableModel>();
 
-        for (int i = 0; i < mapSize / 50f; i++) {
-            IntersectableModel wolfTransform = ModelFactory.createBoxModel(10f, 0.5f, 10f, new Color(0.8f, 0.2f, 0.2f, 1f));
+        for (i in 0 until (mapSize / 50f).toInt()) {
+            val wolfTransform: IntersectableModel  = ModelFactory.createBoxModel(10f, 0.5f, 10f,
+                    Color(0.8f, 0.2f, 0.2f, 1f));
 
             do {
-                float penLocX = ((mapSize / 2) * -1) + (MathUtils.random() * mapSize);
-                float penLocZ = ((mapSize / 2) * -1) + (MathUtils.random() * mapSize);
+                val penLocX = ((mapSize / 2) * -1) + (MathUtils.random() * mapSize);
+                val penLocZ = ((mapSize / 2) * -1) + (MathUtils.random() * mapSize);
 
                 wolfTransform.transform.setToTranslation(penLocX, 0f, penLocZ);
 
@@ -254,25 +268,25 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
         }
     }
 
-    private void createSheepPen(float mapSize, int penW, int penH) {
-        float penLocX = ((mapSize / 2) * -1) + (MathUtils.random() * mapSize);
-        float penLocZ = ((mapSize / 2) * -1) + (MathUtils.random() * mapSize);
+    private fun createSheepPen(mapSize: Float, penW: Int, penH: Int) {
+        var penLocX: Float
+        var penLocZ: Float
 
-        BoundingBox fenceB = ModelFactory.createCustomModel(GraphicsHandler.MDL_FENCE1).model
-                .calculateBoundingBox(new BoundingBox());
+        val fenceB: BoundingBox = ModelFactory.createCustomModel(GraphicsHandler.MDL_FENCE1).model
+                .calculateBoundingBox(BoundingBox());
 
-        sheepPenModel = ModelFactory.createBoxModel(penW * fenceB.getWidth(), 0.5f, penH * fenceB.getWidth(), new Color(0.5f, 0.5f, 0.5f, 1f));
+        sheepPenModel = ModelFactory.createBoxModel(penW * fenceB.getWidth(), 0.5f, penH * fenceB.getWidth(), Color(0.5f, 0.5f, 0.5f, 1f));
 
         do {
             penLocX = ((mapSize / 2) * -1) + (MathUtils.random() * mapSize);
             penLocZ = ((mapSize / 2) * -1) + (MathUtils.random() * mapSize);
 
-            sheepPenModel.transform.setTranslation(penLocX, 0, penLocZ);
+            sheepPenModel.transform.setTranslation(penLocX, 0f, penLocZ);
         } while(!mapModel.contains(sheepPenModel));
 
-        int entryPoint = MathUtils.random(penW - 1);
-        boolean x = false;
-        boolean firstDir = false;
+        val entryPoint: Int = MathUtils.random(penW - 1)
+        var x = false
+        var firstDir = false
         if (penLocZ < 0) {
             if (penLocX < 0) {
                 if (penLocZ <= penLocX) {
@@ -301,8 +315,8 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
             }
         }
 
-        System.out.println(x + "," + firstDir + "," + entryPoint);
-        for (int i = 0; i < penW; i++) {
+        System.out.println(x.toString() + "," + firstDir + "," + entryPoint);
+        for (i in 0 until penW) {
             if (x && i == entryPoint) {
                 if (firstDir)
                     createFence(penLocX + ((i - penW / 2f) * fenceB.getWidth()) + (fenceB.getWidth() / 2f),
@@ -322,7 +336,7 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
                     penLocZ + ((penH / 2f) * fenceB.getWidth()), 1.0f, 0f);
         }
 
-        for (int i = 0; i < penH; i++) {
+        for (i in 0 until penH) {
             if (!x && i == entryPoint) {
                 if (firstDir)
                     createFence(penLocX + ((penW / 2f) * fenceB.getWidth()),
@@ -343,34 +357,35 @@ class Level(sheepCount: Int, wolfCount: Int, complexity: Float) {
         }
     }
 
-    private IntersectableModel createFence(float x, float z, float scale, float rotation) {
-        IntersectableModel model = newCollision(x, 0, z, scale, rotation, GraphicsHandler.MDL_FENCE1);
+    private fun createFence(x: Float, z: Float, scale: Float, rotation: Float): IntersectableModel {
+        val model: IntersectableModel = newCollision(x, 0f, z, scale, rotation, GraphicsHandler
+                .MDL_FENCE1);
         addCollisionModel(model);
         addFixedEntity(model, x, z);
         return model;
     }
 
-    private void addFixedEntity(IntersectableModel model, float x, float z) {
-        engine.addEntity(new Entity()
-                .add(new FixedObjectRepulsor())
-                .add(new ModelComponent(model))
-                .add(new Position(new Vector3(x, 0, z), new Vector3())) // rotation unused
+    private fun addFixedEntity(model: IntersectableModel, x: Float, z: Float) {
+        engine.addEntity(Entity()
+                .add(FixedObjectRepulsor())
+                .add(LogicHandler.ModelComponent(model))
+                .add(Position(Vector3(x, 0f, z), Vector3())) // rotation unused
         );
     }
 
-    private void createBounds(float mapSize) {
-        mapModel = ModelFactory.createBoxModel(mapSize, 0.5f, mapSize, new Color(0.2f, 0.2f, 0.8f, 1f));
-        mapModel.transform.setTranslation(0, 0, 0);
+    private fun createBounds(mapSize: Float) {
+        mapModel = ModelFactory.createBoxModel(mapSize, 0.5f, mapSize, Color(0.2f, 0.2f, 0.8f, 1f));
+        mapModel.transform.setTranslation(0f, 0f, 0f);
 
-        mapSize *= 1.1f;
+        val penMapSize = mapSize * 1.1f;
 
-        BoundingBox fenceB = ModelFactory.createCustomModel(GraphicsHandler.MDL_FENCE1).model
-                .calculateBoundingBox(new BoundingBox());
+        val fenceB: BoundingBox = ModelFactory.createCustomModel(GraphicsHandler.MDL_FENCE1).model
+                .calculateBoundingBox(BoundingBox());
 
-        int penW = (int) (mapSize / fenceB.getWidth());
-        int penH = penW;
+        val penW = (penMapSize / fenceB.getWidth()).toInt();
+        val penH = penW;
 
-        for (int i = 0; i < penW; i++) {
+        for (i in 0 until penW) {
             // North Fence
             createFence(((i - penW / 2f) * fenceB.getWidth()) + (fenceB.getWidth() / 2f),
                     -((penH / 2f) * fenceB.getWidth()), 1.0f, 0f);

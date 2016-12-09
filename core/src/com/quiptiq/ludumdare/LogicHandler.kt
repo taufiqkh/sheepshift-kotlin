@@ -1,13 +1,35 @@
 package com.quiptiq.ludumdare
 
 import com.badlogic.ashley.core.*
+import com.badlogic.ashley.utils.ImmutableArray
 import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.graphics.Color
+import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute
+import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.math.Vector3
 import com.quiptiq.ludumdare.ld35.entity.*
 import com.quiptiq.ludumdare.ld35.game.Level
+import com.quiptiq.ludumdare.ld35.gfx.IntersectableModel
+import com.quiptiq.ludumdare.ld35.math.ImmutableVector3
+import com.quiptiq.ludumdare.ld35.math.MovementCalculator
 import java.util.*
 
 class LogicHandler {
+
+    // Simple reference to the model
+    data class ModelComponent(val model: IntersectableModel) : Component
+
+    class PredatorHidden : Component
+
+    class Predator : Component
+
+    interface ModelInstanceProvider {
+        fun createModel(e: Entity, position: Vector3): IntersectableModel
+    }
+
+    // Differentiate player
+    class Mouseable : Component
+
     companion object {
         private val NUM_CREATURES: Int = 5;
         private val creatures: Family =
@@ -49,14 +71,8 @@ class LogicHandler {
         private val MAX_SPEED = 120f
         // Default height above the "ground" at which to draw entities
         private val DEFAULT_HEIGHT = 0f
-        private val DEFAULT_ROTATION = ImmutableVector3(0, 0, 1)
-        private val UP: ImmutableVector3 = ImmutableVector3(0, 1, 0);
-
-        // Differentiate player
-        class Mouseable : Component
-
-        // Simple reference to the model
-        data class ModelComponent(val model: IntersectableModel) : Component
+        private val DEFAULT_ROTATION = ImmutableVector3(0f, 0f, 1f)
+        private val UP: ImmutableVector3 = ImmutableVector3(0f, 1f, 0f);
 
         /**
          * Max speed at which prey is attracted to/repulsed by things
@@ -72,20 +88,12 @@ class LogicHandler {
             speeds.put(AttractorType.PREY_PREDATOR, EVASION_SPEED);
             speeds.put(AttractorType.HIDDEN_PREDATOR, 30f);
             speeds.put(AttractorType.PREDATOR_PREY, CHASE_SPEED);
-            for (type : AttractorType.values()) {
+            for (type in AttractorType.values()) {
                 if (speeds.get(type) == null) {
                     speeds.put(type, 3f);
                 }
             }
             PREY_ATTRACTOR_SPEEDS = speeds;
-        }
-
-        class PredatorHidden : Component
-
-        class Predator : Component
-
-        interface ModelInstanceProvider {
-            fun createModel(e: Entity, position: Vector3): IntersectableModel
         }
 
         private interface AttractorProvider {
@@ -116,32 +124,13 @@ class LogicHandler {
      * Provides all attractors in which a prey is interested
      */
     private val PREY_ATTRACTORS_LISTER: AttractedByLister = AttractedByLister(
-    AttractorProvider() {
+    object : AttractorProvider {
         override fun getAttractorsFoundIn(entity: Entity): List<Attractor> {
-            List<Attractor> attractors = new ArrayList<Attractor>();
-            for (Attractor attractor : Attractor[]{
-            CROWDING_MAPPER.get(entity),
-            COHESION_MAPPER.get(entity),
-            PREDATOR_PREY_MAPPER.get(entity)
-        }) {
-            if (attractor != null) {
-                attractors.add(attractor);
-            }
-        }
-            return attractors;
-        }
-    });
-
-    /**
-     * Provides all attractors in which a predator is interested
-     */
-    private val PREDATOR_ATTRACTORS_LISTER: AttractedByLister = AttractedByLister(
-    AttractorProvider() {
-        override fun getAttractorsFoundIn(entity: Entity): List<Attractor> {
-            val attractors: List<Attractor> = ArrayList<Attractor>();
-            val prey: Prey = PREY_MAPPER.get(entity);
-            if (prey != null && !prey.isDead()) {
-                val attractor: PreyPredatorAttractor = PREY_PREDATOR_MAPPER.get(entity);
+            val attractors: MutableList<Attractor> = ArrayList<Attractor>();
+            for (attractor in listOf<Attractor?>(
+                    CROWDING_MAPPER.get(entity),
+                    COHESION_MAPPER.get(entity),
+                    PREDATOR_PREY_MAPPER.get(entity))) {
                 if (attractor != null) {
                     attractors.add(attractor);
                 }
@@ -150,7 +139,22 @@ class LogicHandler {
         }
     });
 
-    private val projectionTranslator: ProjectionTranslator
+    /**
+     * Provides all attractors in which a predator is interested
+     */
+    private val PREDATOR_ATTRACTORS_LISTER: AttractedByLister = AttractedByLister(
+    object: AttractorProvider {
+        override fun getAttractorsFoundIn(entity: Entity): List<Attractor> {
+            val attractors: MutableList<Attractor> = ArrayList<Attractor>();
+            val prey: Prey = PREY_MAPPER.get(entity);
+            if (!prey.isDead) {
+                attractors.add(PREY_PREDATOR_MAPPER.get(entity))
+            }
+            return attractors;
+        }
+    });
+
+    private var projectionTranslator: ProjectionTranslator
 
     private val staleModelEntities: ArrayList<Entity> = ArrayList<Entity>();
 
@@ -243,7 +247,7 @@ class LogicHandler {
             position.set(worldMousePosn);
             model.updateCollisions();
         }
-        ImmutableArray<Entity> entities = engine.getEntitiesFor(creatures);
+        val entities: ImmutableArray<Entity> = engine.getEntitiesFor(creatures);
         calculateMovementChanges(engine, player, entities);
         applyMovementChanges(entities);
     }
@@ -253,24 +257,24 @@ class LogicHandler {
      * O(n^2) due to the need to look at all other members of the flock.
      * Partitioning by location would improve this.
      */
-    private void calculateMovementChanges(Engine engine, Entity player, ImmutableArray<Entity> entities) {
+    private fun calculateMovementChanges(engine: Engine, player: Entity, entities: ImmutableArray<Entity>) {
 
-        Position playerPosn = POSN_MAPPER.get(player);
+        val playerPosn: Position = POSN_MAPPER.get(player);
 
         // First calculate change in position for all objects.
         // Note that re-used of entity collection iterators means you can't
         // have inner loops, hence use of indices.
-        for (int i = 0; i < entities.size(); i++) {
-            Entity entity = entities.get(i);
-            Position posn = POSN_MAPPER.get(entity);
-            Movement movement = MVMNT_MAPPER.get(entity);
-            Vector3 change;
+        for (i in 0 until entities.size()) {
+            val entity: Entity = entities.get(i)
+            val posn: Position = POSN_MAPPER.get(entity)
+            val movement: Movement = MVMNT_MAPPER.get(entity)
+            val change: Vector3
 
-            Predator predator = entity.getComponent(Predator.class);
+            val predator: Predator? = entity.getComponent(Predator::class.java)
             // Attempt to move away from the player
-            float dist2ToPlayer = posn.position.dst2(playerPosn.position);
+            val dist2ToPlayer: Float = posn.position.dst2(playerPosn.position);
             if (dist2ToPlayer <= PLAYER_EFFECT_RANGE) {
-                float speed = 60 * PLAYER_EFFECT_RANGE / (dist2ToPlayer * dist2ToPlayer);
+                val speed: Float = 60 * PLAYER_EFFECT_RANGE / (dist2ToPlayer * dist2ToPlayer);
                 change = movementCalculator.awayFrom(posn, playerPosn).nor().scl(speed).clamp(0, EVASION_SPEED);
                 if (predator != null) {
                     // Moving away from the player overrides all else
@@ -278,60 +282,59 @@ class LogicHandler {
                     continue;
                 }
             } else {
-                change = new Vector3();
+                change = Vector3();
             }
 
             // Try to avoid crowding neighbors, yet keep in distance
-            ImmutableArray<Entity> others = engine.getEntitiesFor(creatures);
+            val others: ImmutableArray<Entity> = engine.getEntitiesFor(creatures);
             // Find out what this entity is attracted to
-            EnumMap<AttractorType, Vector3> attractors =
-            new EnumMap<AttractorType, Vector3>(AttractorType.class);
-            for (AttractorType attractorType : AttractorType.values()) {
-            attractors.put(attractorType, new Vector3());
-        }
+            val attractors: EnumMap<AttractorType, Vector3> =
+                EnumMap<AttractorType, Vector3>(AttractorType::class.java);
+            for (attractorType in AttractorType.values()) {
+                attractors.put(attractorType, Vector3());
+            }
             // Get a lister of attractors in which this entity is interested
-            AttractedByLister lister = ATTRACTED_BY_MAPPER.get(entity);
-            for (int j = 0; j < others.size(); j++) {
-            Entity other = others.get(j);
-            if (entity == other) {
-                continue;
+            val lister: AttractedByLister = ATTRACTED_BY_MAPPER.get(entity);
+            for (j in 0 until others.size()) {
+                val other: Entity = others.get(j);
+                if (entity == other) {
+                    continue;
+                }
+                val otherPosn: Position = POSN_MAPPER.get(other);
+                val distance: Float = posn.position.dst2(otherPosn.position);
+                // List all interesting attractors on the other entity
+                for (attractor: Attractor in lister.getAttractorsFoundIn(other)) {
+                    if (distance <= attractor.maxRange) {
+                        val speed: Float = attractor.getBaseSpeed(distance);
+                        val direction: Vector3 = movementCalculator.towards(posn, otherPosn).nor();
+                        attractors.get(attractor.attractorType)!!.add(direction.scl(speed));
+                    }
+                }
             }
-            Position otherPosn = POSN_MAPPER.get(other);
-            float distance = posn.position.dst2(otherPosn.position);
-            // List all interesting attractors on the other entity
-            for (Attractor attractor : lister.getAttractorsFoundIn(other)) {
-
-            if (distance <= attractor.getMaxRange()) {
-                float speed = attractor.getBaseSpeed(distance);
-                Vector3 direction = movementCalculator.towards(posn, otherPosn).nor();
-                attractors.get(attractor.getAttractorType()).add(direction.scl(speed));
-            }
-        }
-        }
             // Add fixed attractors
-            ImmutableArray<Entity> obstacles = engine.getEntitiesFor(obstacleFamily);
-            Vector3 obstacleChange = attractors.get(AttractorType.FIXED_OBSTACLE);
-            for (int obstacleIdx = 0; obstacleIdx < obstacles.size(); obstacleIdx++) {
-            Entity obstacle = obstacles.get(obstacleIdx);
-            FixedObjectRepulsor repulsor = OBSTACLE_MAPPER.get(obstacle);
-            Position otherPosn = POSN_MAPPER.get(obstacle);
-            if (repulsor == null || otherPosn == null) {
-                System.out.println("Null found for obstacle " + repulsor + ", " + otherPosn);
-                continue;
+            val obstacles: ImmutableArray<Entity> = engine.getEntitiesFor(obstacleFamily);
+            val obstacleChange: Vector3 = attractors.get(AttractorType.FIXED_OBSTACLE)!!;
+            for (obstacleIdx in 0 until obstacles.size()) {
+                val obstacle: Entity = obstacles.get(obstacleIdx)
+                val repulsor: FixedObjectRepulsor = OBSTACLE_MAPPER.get(obstacle);
+                val otherPosn: Position = POSN_MAPPER.get(obstacle);
+                if (repulsor == null || otherPosn == null) {
+                    System.out.println("Null found for obstacle " + repulsor + ", " + otherPosn);
+                    continue;
+                }
+                val distance: Float = posn.position.dst2(otherPosn.position);
+                if (distance <= repulsor.maxRange) {
+                    val speed: Float = repulsor.getBaseSpeed(distance);
+                    val direction: Vector3 = movementCalculator.towards(posn, otherPosn).nor();
+                    obstacleChange.add(direction.scl(speed));
+                }
             }
-            float distance = posn.position.dst2(otherPosn.position);
-            if (distance <= repulsor.getMaxRange()) {
-                float speed = repulsor.getBaseSpeed(distance);
-                Vector3 direction = movementCalculator.towards(posn, otherPosn).nor();
-                obstacleChange.add(direction.scl(speed));
-            }
-        }
             // Add all attractions together, clamped by their speed
-            for (AttractorType attractorType : AttractorType.values()) {
-            Vector3 attractantChange = attractors.get(attractorType);
-            float speed = PREY_ATTRACTOR_SPEEDS.get(attractorType);
-            change.add(attractantChange.clamp(0, speed));
-        }
+            for (attractorType in AttractorType.values()) {
+                val attractantChange: Vector3 = attractors.get(attractorType)!!
+                val speed: Float = PREY_ATTRACTOR_SPEEDS.get(attractorType)!!
+                change.add(attractantChange.clamp(0f, speed));
+            }
             // speed is per second, so scale according to seconds
             prepareMovement(movement, change.scl(getDelta()));
         }
@@ -342,8 +345,8 @@ class LogicHandler {
      * @param movement Movement to be updated
      * @param change Changes to movement
      */
-    public void prepareMovement(Movement movement, Vector3 change) {
-        change.clamp(0, MAX_SPEED);
+    fun prepareMovement(movement: Movement, change: Vector3) {
+        change.clamp(0f, MAX_SPEED);
         // any y values for now are set to default height
         change.y = DEFAULT_HEIGHT;
         // velocity changes to the average between the desired and current. Does this work? Idk
@@ -351,17 +354,17 @@ class LogicHandler {
         movement.rotation.set(change).nor();
     }
 
-    private Vector2 createXZVector(Vector3 vector3) {
-        return new Vector2(vector3.x, vector3.z);
+    private fun createXZVector(vector3: Vector3): Vector2 {
+        return Vector2(vector3.x, vector3.z);
     }
 
-    private boolean collides(Entity entity, Array<IntersectableModel> boxes) {
-        Position posn = POSN_MAPPER.get(entity);
-        Movement movement = MVMNT_MAPPER.get(entity);
-        IntersectableModel model = MODEL_MAPPER.get(entity).model;
-        Vector2 start = createXZVector(posn.position);
-        Vector2 end = new Vector2(start).add(createXZVector(movement.velocity));
-        for (IntersectableModel boxModel : boxes) {
+    private fun collides(entity: Entity, boxes: Array<IntersectableModel>): Boolean {
+        val posn: Position = POSN_MAPPER.get(entity)
+        val movement: Movement = MVMNT_MAPPER.get(entity)
+        val model: IntersectableModel = MODEL_MAPPER.get(entity).model
+        val start: Vector2 = createXZVector(posn.position)
+        val end: Vector2 = Vector2(start).add(createXZVector(movement.velocity));
+        for (boxModel in boxes) {
             if (boxModel == model) {
                 continue;
             }
@@ -378,44 +381,43 @@ class LogicHandler {
      * the bounding box of another.
      * @param entities All entities to be moved
      */
-    public void applyMovementChanges(ImmutableArray<Entity> entities) {
+    fun applyMovementChanges(entities: ImmutableArray<Entity>) {
         // now apply the changes to each position
-        Vector3 up = UP.copy();
-        float buffer = 0.01f;
-        Engine engine = getCurrentLevel().getEngine();
+        val up: Vector3 = UP.copy();
+        val buffer: Float = 0.01f;
+        val engine: Engine = getCurrentLevel().getEngine();
 
-        Array<IntersectableModel> boxes = getCurrentLevel().getCollisionModels();
-        for (Entity entity : entities) {
-            Position posn = POSN_MAPPER.get(entity);
-            Movement movement = MVMNT_MAPPER.get(entity);
-            IntersectableModel model = MODEL_MAPPER.get(entity).model;
+        val boxes: Array<IntersectableModel> = getCurrentLevel().getCollisionModels();
+        for (entity in entities) {
+            val posn: Position = POSN_MAPPER.get(entity);
+            val movement: Movement = MVMNT_MAPPER.get(entity);
+            val model: IntersectableModel = MODEL_MAPPER.get(entity).model;
             // Don't change position if it results in a collision
             if (collides(entity, boxes)) {
                 continue;
             }
 
-            Vector3 originalPosition = new Vector3(posn.position);
+            val originalPosition: Vector3 = Vector3(posn.position);
             posn.position.add(movement.velocity);
             // 90f because the models are wrong
             model.transform.setToRotation(Vector3.Y,
                     getRotationAngleTowards(originalPosition, posn.position) + 90f);
             model.transform.setTranslation(posn.position);
             model.updateCollisions();
-            Prey prey = PREY_MAPPER.get(entity);
             if (PREY_MAPPER.get(entity) != null) {
-                if (!prey.isDead()) {
-                    prey.setPenned(getCurrentLevel().getSheepPenModel().contains(model));
-                    if (prey.isPenned()) {
+                val prey: Prey = PREY_MAPPER.get(entity);
+                if (!prey.isDead) {
+                    prey.isPenned = (getCurrentLevel().getSheepPenModel().contains(model));
+                    if (prey.isPenned) {
                         // no longer attracts those outside
-                        entity.remove(CohesionAttractor.class);
-                        entity.remove(PreyPredatorAttractor.class);
-                        entity.remove(AttractedByLister.class);
-                        entity.remove(PredatorHidden.class);
-                        entity.add(new AttractedByLister(new AttractorProvider() {
-                            @Override
-                            public List<Attractor> getAttractorsFoundIn(Entity entity) {
-                                List<Attractor> attractors = new ArrayList<Attractor>();
-                                CrowdingRepulsor crowding = CROWDING_MAPPER.get(entity);
+                        entity.remove(CohesionAttractor::class.java)
+                        entity.remove(PreyPredatorAttractor::class.java)
+                        entity.remove(AttractedByLister::class.java)
+                        entity.remove(PredatorHidden::class.java)
+                        entity.add(AttractedByLister(object: AttractorProvider {
+                            override fun getAttractorsFoundIn(entity: Entity): List<Attractor> {
+                                val attractors: MutableList<Attractor> = ArrayList<Attractor>();
+                                val crowding: CrowdingRepulsor? = CROWDING_MAPPER.get(entity);
                                 if (crowding != null) {
                                     attractors.add(crowding);
                                 }
@@ -423,48 +425,49 @@ class LogicHandler {
                             }
                         }));
                     }
-                    if (!prey.isPenned() && HIDDEN_PREDATOR_MAPPER.get(entity) != null) {
-                        for (IntersectableModel transformer : getCurrentLevel().getWolfTransformModels()) {
+                    if (!prey.isPenned && HIDDEN_PREDATOR_MAPPER.get(entity) != null) {
+                        for (transformer: IntersectableModel in
+                                getCurrentLevel().getWolfTransformModels()) {
                             if (transformer.contains(model)) {
                                 // Remove all prey components and add predator
-                                entity.remove(Prey.class);
-                                entity.remove(CrowdingRepulsor.class);
-                                entity.remove(CohesionAttractor.class);
-                                entity.remove(PreyPredatorAttractor.class);
-                                entity.remove(AttractedByLister.class);
-                                entity.remove(PredatorHidden.class);
+                                entity.remove(Prey::class.java)
+                                entity.remove(CrowdingRepulsor::class.java)
+                                entity.remove(CohesionAttractor::class.java)
+                                entity.remove(PreyPredatorAttractor::class.java)
+                                entity.remove(AttractedByLister::class.java)
+                                entity.remove(PredatorHidden::class.java)
 
-                                entity.add(new PredatorPreyRepulsor())
-                                        .add(new Predator())
-                                        .add(PREDATOR_ATTRACTORS_LISTER);
-                                staleModelEntities.add(entity);
-                                break;
+                                entity.add(PredatorPreyRepulsor())
+                                        .add(Predator())
+                                        .add(PREDATOR_ATTRACTORS_LISTER)
+                                staleModelEntities.add(entity)
+                                break
                             }
                         }
                     }
 
-                    if (prey.isPenned()) {
+                    if (prey.isPenned) {
                         model.materials.get(1).set(ColorAttribute.createDiffuse(Color.GREEN));
                     } else {
                         model.materials.get(1).set(ColorAttribute.createDiffuse(Color.WHITE));
                     }
                 }
             }
-            Predator predator = PREDATOR_MAPPER.get(entity);
+            val predator: Predator? = PREDATOR_MAPPER.get(entity);
             if (predator != null) {
                 // for each prey, if this predator intersects that prey, kill it.
-                ImmutableArray<Entity> potentialPreys = engine.getEntitiesFor(preyFamily);
-                for (int i = 0; i < potentialPreys.size(); i++) {
-                    Entity potentialPrey = potentialPreys.get(i);
-                    prey = PREY_MAPPER.get(potentialPreys.get(i));
-                    if (prey == null) {
-                        continue;
-                    }
-                    IntersectableModel preyModel = MODEL_MAPPER.get(potentialPrey).model;
+                val potentialPreys: ImmutableArray<Entity> = engine.getEntitiesFor(preyFamily);
+                for (i in 0 until potentialPreys.size()) {
+                    val potentialPrey: Entity = potentialPreys.get(i);
+                    val prey = PREY_MAPPER.get(potentialPreys.get(i)) ?: continue;
+                    val preyModel: IntersectableModel = MODEL_MAPPER.get(potentialPrey).model;
                     if (preyModel.intersects(model)) {
-                        if (!prey.isDead()) {
+                        if (!prey.isDead) {
                             preyModel.materials.get(1).set(ColorAttribute.createDiffuse(Color.RED));
-                            preyModel.transform.translate(0f, 1f, 0f).rotate(Vector3.X, 90).translate(0f, -1f, 0f);
+                            preyModel.transform
+                                    .translate(0f, 1f, 0f)
+                                    .rotate(Vector3.X, 90f)
+                                    .translate(0f, -1f, 0f);
                             GraphicsHandler.getGraphicsHandler().getWorldRenderer().getAnimController(preyModel).paused = true;
 
                             if (!GraphicsHandler.getGraphicsHandler().getWorldRenderer().mute) {
@@ -472,37 +475,37 @@ class LogicHandler {
                                 GraphicsHandler.getGraphicsHandler().getWorldRenderer().killSound.play(0.25f);
                             }
                         }
-                        prey.kill();
+                        prey.kill()
                         // dead prey can't move
-                        potentialPrey.remove(Movement.class);
+                        potentialPrey.remove(Movement::class.java)
                         // dead prey has no flock or predator attractors
-                        potentialPrey.remove(CrowdingRepulsor.class);
-                        potentialPrey.remove(CohesionAttractor.class);
-                        potentialPrey.remove(PreyPredatorAttractor.class);
+                        potentialPrey.remove(CrowdingRepulsor::class.java)
+                        potentialPrey.remove(CohesionAttractor::class.java)
+                        potentialPrey.remove(PreyPredatorAttractor::class.java)
                     }
                 }
             }
         }
     }
 
-    public int getNumPenned() {
-        ImmutableArray<Entity> entities = getCurrentLevel().getEngine().getEntitiesFor(preyFamily);
-        int count = 0;
-        for (Entity entity : entities) {
-            Prey prey = PREY_MAPPER.get(entity);
-            if (!prey.isDead() && prey.isPenned()) {
+    fun getNumPenned(): Int {
+        val entities: ImmutableArray<Entity> = getCurrentLevel().getEngine().getEntitiesFor(preyFamily)
+        var count: Int = 0
+        for (entity in entities) {
+            val prey: Prey = PREY_MAPPER.get(entity);
+            if (!prey.isDead && prey.isPenned) {
                 count++;
             }
         }
         return count;
     }
 
-    public int getNumDead() {
-        ImmutableArray<Entity> entities = getCurrentLevel().getEngine().getEntitiesFor(preyFamily);
-        int count = 0;
-        for (Entity entity : entities) {
-            Prey prey = PREY_MAPPER.get(entity);
-            if (prey.isDead()) {
+    fun getNumDead(): Int {
+        val entities: ImmutableArray<Entity> = getCurrentLevel().getEngine().getEntitiesFor(preyFamily);
+        var count: Int = 0;
+        for (entity in entities) {
+            val prey: Prey = PREY_MAPPER.get(entity);
+            if (prey.isDead) {
                 count++;
             }
         }
@@ -512,22 +515,25 @@ class LogicHandler {
     /**
      * 	Creates models for each of the creatures, using the callback and assigning models to each creature
      */
-    public void createCreatures(ModelInstanceProvider modelProvider) {
-        Engine engine = GraphicsHandler.getGraphicsHandler().getWorldRenderer().getCurrentLevel().getEngine();
+    fun createCreatures(modelProvider: ModelInstanceProvider) {
+        val engine: Engine = GraphicsHandler.getGraphicsHandler().getWorldRenderer().getCurrentLevel()
+                .getEngine();
 
-        for (Entity entity : engine.getEntitiesFor(creatures)) {
-            IntersectableModel model = modelProvider.createModel(entity, POSN_MAPPER.get(entity).position);
-            entity.add(new ModelComponent(model));
+        for (entity in engine.getEntitiesFor(creatures)) {
+            val model: IntersectableModel = modelProvider.createModel(entity, POSN_MAPPER.get
+                (entity).position);
+            entity.add(ModelComponent(model));
         }
     }
 
-    public void setProjectionTranslator(ProjectionTranslator translator) {
+    fun setProjectionTranslator(translator: ProjectionTranslator) {
         this.projectionTranslator = translator;
     }
 
-    public Vector3 getPlayerPosn() {
-        Entity player = GraphicsHandler.getGraphicsHandler().getWorldRenderer().getCurrentLevel().getPlayer();
+    fun getPlayerPosn(): Vector3 {
+        val player: Entity = GraphicsHandler.getGraphicsHandler().getWorldRenderer().getCurrentLevel()
+                .getPlayer();
 
-        return new Vector3(POSN_MAPPER.get(player).position);
+        return Vector3(POSN_MAPPER.get(player).position);
     }
 }

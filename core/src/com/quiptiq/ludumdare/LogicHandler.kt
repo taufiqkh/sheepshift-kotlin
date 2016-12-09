@@ -7,6 +7,8 @@ import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.math.Vector3
+import com.badlogic.gdx.utils.Array as GdxArray
+import com.quiptiq.ludumdare.ld35.GraphicsHandler
 import com.quiptiq.ludumdare.ld35.entity.*
 import com.quiptiq.ludumdare.ld35.game.Level
 import com.quiptiq.ludumdare.ld35.gfx.IntersectableModel
@@ -154,7 +156,7 @@ class LogicHandler {
         }
     });
 
-    private var projectionTranslator: ProjectionTranslator
+    private lateinit var projectionTranslator: ProjectionTranslator
 
     private val staleModelEntities: ArrayList<Entity> = ArrayList<Entity>();
 
@@ -216,7 +218,7 @@ class LogicHandler {
     }
 
     private fun getCurrentLevel(): Level {
-        return GraphicsHandler.getGraphicsHandler().getWorldRenderer().getCurrentLevel();
+        return GraphicsHandler.graphicsHandler.getWorldRenderer().getCurrentLevel();
     }
 
     fun getRotationAngleTowards(from: Vector3, to: Vector3): Float {
@@ -237,7 +239,7 @@ class LogicHandler {
         val velocity: Vector3 = MVMNT_MAPPER.get(player).velocity;
         velocity.set(worldMousePosn).sub(position);
 
-        val collisionModels: Array<IntersectableModel> = getCurrentLevel().getCollisionModels();
+        val collisionModels: GdxArray<IntersectableModel> = getCurrentLevel().getCollisionModels();
         val model: IntersectableModel = MODEL_MAPPER.get(player).model;
 
         // 90f because the model is wrong
@@ -275,7 +277,8 @@ class LogicHandler {
             val dist2ToPlayer: Float = posn.position.dst2(playerPosn.position);
             if (dist2ToPlayer <= PLAYER_EFFECT_RANGE) {
                 val speed: Float = 60 * PLAYER_EFFECT_RANGE / (dist2ToPlayer * dist2ToPlayer);
-                change = movementCalculator.awayFrom(posn, playerPosn).nor().scl(speed).clamp(0, EVASION_SPEED);
+                change = movementCalculator.awayFrom(posn, playerPosn).nor().scl(speed).clamp(0f,
+                        EVASION_SPEED);
                 if (predator != null) {
                     // Moving away from the player overrides all else
                     prepareMovement(movement, change.scl(getDelta()));
@@ -358,7 +361,7 @@ class LogicHandler {
         return Vector2(vector3.x, vector3.z);
     }
 
-    private fun collides(entity: Entity, boxes: Array<IntersectableModel>): Boolean {
+    private fun collides(entity: Entity, boxes: GdxArray<IntersectableModel>): Boolean {
         val posn: Position = POSN_MAPPER.get(entity)
         val movement: Movement = MVMNT_MAPPER.get(entity)
         val model: IntersectableModel = MODEL_MAPPER.get(entity).model
@@ -387,7 +390,7 @@ class LogicHandler {
         val buffer: Float = 0.01f;
         val engine: Engine = getCurrentLevel().getEngine();
 
-        val boxes: Array<IntersectableModel> = getCurrentLevel().getCollisionModels();
+        val boxes: GdxArray<IntersectableModel> = getCurrentLevel().getCollisionModels();
         for (entity in entities) {
             val posn: Position = POSN_MAPPER.get(entity);
             val movement: Movement = MVMNT_MAPPER.get(entity);
@@ -468,11 +471,14 @@ class LogicHandler {
                                     .translate(0f, 1f, 0f)
                                     .rotate(Vector3.X, 90f)
                                     .translate(0f, -1f, 0f);
-                            GraphicsHandler.getGraphicsHandler().getWorldRenderer().getAnimController(preyModel).paused = true;
+                            GraphicsHandler.graphicsHandler.getWorldRenderer()
+                                    .getAnimController(preyModel).paused = true;
 
-                            if (!GraphicsHandler.getGraphicsHandler().getWorldRenderer().mute) {
-                                GraphicsHandler.getGraphicsHandler().getWorldRenderer().wolfHowl.play(0.75f);
-                                GraphicsHandler.getGraphicsHandler().getWorldRenderer().killSound.play(0.25f);
+                            if (!GraphicsHandler.graphicsHandler.getWorldRenderer().mute) {
+                                GraphicsHandler.graphicsHandler.getWorldRenderer().wolfHowl
+                                        .play(0.75f);
+                                GraphicsHandler.graphicsHandler.getWorldRenderer().killSound
+                                        .play(0.25f);
                             }
                         }
                         prey.kill()
@@ -516,7 +522,7 @@ class LogicHandler {
      * 	Creates models for each of the creatures, using the callback and assigning models to each creature
      */
     fun createCreatures(modelProvider: ModelInstanceProvider) {
-        val engine: Engine = GraphicsHandler.getGraphicsHandler().getWorldRenderer().getCurrentLevel()
+        val engine: Engine = GraphicsHandler.graphicsHandler.getWorldRenderer().getCurrentLevel()
                 .getEngine();
 
         for (entity in engine.getEntitiesFor(creatures)) {
@@ -531,7 +537,7 @@ class LogicHandler {
     }
 
     fun getPlayerPosn(): Vector3 {
-        val player: Entity = GraphicsHandler.getGraphicsHandler().getWorldRenderer().getCurrentLevel()
+        val player: Entity = GraphicsHandler.graphicsHandler.getWorldRenderer().getCurrentLevel()
                 .getPlayer();
 
         return Vector3(POSN_MAPPER.get(player).position);

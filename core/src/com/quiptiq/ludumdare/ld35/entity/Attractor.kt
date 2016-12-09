@@ -8,7 +8,7 @@ import com.badlogic.ashley.core.Component
 interface Attractor : Component {
     fun getBaseSpeed(distance: Float): Float
 
-    fun getMaxRange(): Float
+    val maxRange: Float
 
-    fun getAttractorType(): AttractorType
+    val attractorType: AttractorType
 }
